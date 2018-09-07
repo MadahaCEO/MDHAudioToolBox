@@ -7,12 +7,12 @@
 		<key>MDHAVToolbox.xcscheme</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>13</integer>
+			<integer>0</integer>
 		</dict>
 		<key>MDHAVToolboxAggregate.xcscheme</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>14</integer>
+			<integer>1</integer>
 		</dict>
 	</dict>
 </dict>

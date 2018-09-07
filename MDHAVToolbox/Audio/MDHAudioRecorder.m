@@ -9,8 +9,6 @@
 #import "MDHAudioRecorder.h"
 #import "MDHMP3Conversion.h"
 
-#import <MDHFoundation/MDHFoundation.h>
-
 @interface MDHAudioRecorder ()<AVAudioRecorderDelegate>
 
 @property (nonatomic, copy)   NSString *realAudioPath;
@@ -23,7 +21,12 @@
 @property (nonatomic, strong) AVAudioRecorder  *recorder;
 @property (nonatomic, strong) MDHMP3Conversion *mp3Convert;
 
+
+@property (nonatomic, assign) BOOL alreadyPause;
+
+
 @end
+
 
 
 @implementation MDHAudioRecorder
@@ -47,14 +50,16 @@
 - (void)dealloc {
     
     NSLog(@"----------");
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
+
 
 - (instancetype)initWithBitRate:(int)bitRate
                       channnels:(int)channnels
                      sampleRate:(int)sampleRate
                     audioFormat:(MDHAudioFormat)audioFormat
                   recorderError:(NSError **)error {
-
+    
     self = [super init];
     if (self) {
         
@@ -64,13 +69,12 @@
         self.realChannels     = channnels;
         self.realSampleRate   = sampleRate;
         self.realFormat       = audioFormat;
-
-       
+        
         NSArray *bitRateArray     = @[@(8),@(16),@(24),@(32)];
         NSArray *sampleRateArray  = @[@(8000),@(16000),@(44100)];
         NSArray *channnelsArray   = @[@(1),@(2)];
         NSArray *audioFormatArray = @[@(MDHAudioFormatCAF),@(MDHAudioFormatWAV),@(MDHAudioFormatMP3)];
-
+        
         if (![bitRateArray containsObject:@(bitRate)] ||
             ![sampleRateArray containsObject:@(sampleRate)] ||
             ![channnelsArray containsObject:@(channnels)] ||
@@ -79,10 +83,13 @@
             if (error != NULL) {//判断调用方是否需要获取错误信息
                 *error = [NSError errorWithDomain:@"com.recorder.error"
                                              code:0
-                                         userInfo:@{NSLocalizedDescriptionKey:@"参数异常"}];                
+                                         userInfo:@{NSLocalizedDescriptionKey:@"参数异常"}];
                 return nil;
             }
         }
+        
+        [self addNotification];
+        
     }
     return self;
 }
@@ -93,13 +100,7 @@
     BOOL valid = YES;
     
     NSError *error = nil;
-    [[AVAudioSession sharedInstance] setCategory: AVAudioSessionCategoryPlayAndRecord error:&error];
-    if (error && self.completeBlock) {
-        self.completeBlock(nil, nil, nil, error);
-        valid = NO;
-    }
-    
-    [[AVAudioSession sharedInstance] setActive:YES error:&error];
+    [[AVAudioSession sharedInstance] setCategory: AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionMixWithOthers error:&error];
     if (error && self.completeBlock) {
         self.completeBlock(nil, nil, nil, error);
         valid = NO;
@@ -111,7 +112,7 @@
 - (void)start:(MDHAudioRecorderCompleteBlock)block {
     
     self.completeBlock = block;
-
+    
     if (![self switchCategory]) {
         return;
     }
@@ -124,7 +125,7 @@
                           };
     
     NSURL *url = [NSURL URLWithString:self.realAudioPath];
-
+    
     NSError *error = nil;
     self.recorder = [[AVAudioRecorder alloc] initWithURL:url settings:dic error:nil];
     if (error && self.completeBlock) {
@@ -133,16 +134,18 @@
     }
     
     self.recorder.delegate = self;
-
+    
     [self.recorder prepareToRecord];
     [self.recorder record];
-
+    
     if (self.realFormat == MDHAudioFormatMP3) {
         [self convertToMP3];
     }
 }
 
 - (void)convertToMP3 {
+    
+    self.alreadyPause = NO;
     
     NSError *error = nil;
     self.mp3Convert = [[MDHMP3Conversion alloc] initWithPath:self.realAudioPath
@@ -158,10 +161,11 @@
         return;
     }
     
-    MDHWeakSelf(self);
+    
+    __weak   typeof(self) weakSelf   = self;
     [self.mp3Convert start:^(BOOL deleteFile, NSError *error) {
-        MDHStrongSelf(weakSelf);
-
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+       
         if (error) {
             if (strongSelf.completeBlock) {
                 self.completeBlock(nil, nil, nil, error);
@@ -172,7 +176,7 @@
                 // 取消操作无需回调，直接删除文件。
                 [[NSFileManager defaultManager] removeItemAtPath:strongSelf.realMP3Path error:nil];
                 [[NSFileManager defaultManager] removeItemAtPath:strongSelf.realAudioPath error:nil];
-
+                
             } else {
                 
                 NSString *tempPath = strongSelf.realMP3Path?:@"";
@@ -195,6 +199,8 @@
 
 - (void)reStart {
     
+    self.alreadyPause = NO;
+    
     if (!self.recorder.isRecording) {
         [self.recorder record];
         
@@ -206,6 +212,8 @@
 
 - (void)pause {
     
+    self.alreadyPause = YES;
+    
     [self.recorder pause];
     
     if (self.realFormat == MDHAudioFormatMP3) {
@@ -215,6 +223,8 @@
 
 - (void)stop {
     
+    self.alreadyPause = YES;
+    
     [self.recorder stop];
     
     if (self.realFormat == MDHAudioFormatMP3) {
@@ -223,26 +233,14 @@
 }
 
 - (void)cancel {
+    
+    self.alreadyPause = YES;
+    
     [self.recorder stop];
-
+    
     if (self.realFormat == MDHAudioFormatMP3) {
         [self.mp3Convert cancel];
     }
-}
-
-
-+ (void)removeAudio:(NSString *)path {
-    
-    NSString *fullPath = [NSHomeDirectory() stringByAppendingPathComponent:path];
-
-    if ([path.pathExtension.lowercaseString isEqualToString:@"mp3"]) {
-        
-        NSString *otherFullPath = [fullPath stringByReplacingOccurrencesOfString:@"mp3" withString:@"caf"];
-        [[NSFileManager defaultManager] removeItemAtPath:otherFullPath error:nil];
-
-    }
-    
-    [[NSFileManager defaultManager] removeItemAtPath:fullPath error:nil];
 }
 
 
@@ -250,11 +248,12 @@
 
 - (NSString *)pcmFilePath:(MDHAudioFormat)format {
     
-    NSString *name = [NSString stringWithFormat:@"%@.%@",[NSDate timestamp],(format == MDHAudioFormatWAV) ? @"wav" : @"caf"];
-    NSString *path = [MDHTempPath stringByAppendingPathComponent:name];
+    NSString *time = [NSString stringWithFormat:@"%ld", (long)[[NSDate date] timeIntervalSince1970]];
+    NSString *name = [NSString stringWithFormat:@"%@.%@",time,(format == MDHAudioFormatWAV) ? @"wav" : @"caf"];
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
     
     NSLog(@"%@----------",path);
-
+    
     return path;
 }
 
@@ -262,8 +261,46 @@
     
     NSString *name = self.realAudioPath.lastPathComponent.stringByDeletingPathExtension;
     NSString *mp3  = [NSString stringWithFormat:@"%@.mp3",name];
-    NSString *path = [MDHTempPath stringByAppendingPathComponent:mp3];
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:mp3];
     return path;
+}
+
+
+#pragma mark - Notification
+
+- (void)addNotification {
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(audioSessionWasInterrupted:)
+                                                 name:AVAudioSessionInterruptionNotification
+                                               object:[AVAudioSession sharedInstance]];
+    
+}
+
+- (void)audioSessionWasInterrupted:(NSNotification *)notification {
+    
+    if (AVAudioSessionInterruptionTypeBegan == [notification.userInfo[AVAudioSessionInterruptionTypeKey] intValue]) {
+        NSLog(@"begin");
+        
+        if (!self.alreadyPause) { // 正在录音
+            
+            [self.recorder pause];
+            
+            if (self.realFormat == MDHAudioFormatMP3) {
+                [self.mp3Convert pause];
+            }
+        }
+    } else if (AVAudioSessionInterruptionTypeEnded == [notification.userInfo[AVAudioSessionInterruptionTypeKey] intValue]) {
+        NSLog(@"begin - end");
+        
+        /*
+         如果之前处于录音状态，就可以继续录音
+         如果之前已经暂停了，就不需要再录音
+         */
+        if (!self.alreadyPause) {
+            [self reStart];
+        }
+    }
 }
 
 
@@ -287,29 +324,9 @@
     if (self.completeBlock) {
         self.completeBlock(lastPath, duration, fileSize, nil);
     }
-    
-    [[AVAudioSession sharedInstance] setActive:YES withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
-}
-
-- (void)audioRecorderEncodeErrorDidOccur:(AVAudioRecorder *)recorder error:(NSError * __nullable)error {
-    [self cancel];
-}
-
-- (void)audioRecorderBeginInterruption:(AVAudioRecorder *)recorder {
-    [self pause];
-}
-
-- (void)audioRecorderEndInterruption:(AVAudioRecorder *)recorder withOptions:(NSUInteger)flags {
-    [self reStart];
-}
-
-- (void)audioRecorderEndInterruption:(AVAudioRecorder *)recorder withFlags:(NSUInteger)flags {
-    [self reStart];
-}
-
-- (void)audioRecorderEndInterruption:(AVAudioRecorder *)recorder {
-    [self reStart];
 }
 
 
 @end
+
+

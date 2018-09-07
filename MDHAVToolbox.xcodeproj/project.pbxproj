@@ -30,7 +30,6 @@
 		184C939321280A4D0076E6A1 /* MDHMP3Conversion.m in Sources */ = {isa = PBXBuildFile; fileRef = 184C938D21280A4C0076E6A1 /* MDHMP3Conversion.m */; };
 		184C939421280A4D0076E6A1 /* MDHAudioRecorder.m in Sources */ = {isa = PBXBuildFile; fileRef = 184C938E21280A4C0076E6A1 /* MDHAudioRecorder.m */; };
 		184C939521280A4D0076E6A1 /* MDHAudioRecorder.h in Headers */ = {isa = PBXBuildFile; fileRef = 184C938F21280A4D0076E6A1 /* MDHAudioRecorder.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		184C93B9212847840076E6A1 /* MDHFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 184C93B8212847840076E6A1 /* MDHFoundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,7 +63,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				184C93B9212847840076E6A1 /* MDHFoundation.framework in Frameworks */,
 				184C939121280A4D0076E6A1 /* libmp3lame.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
