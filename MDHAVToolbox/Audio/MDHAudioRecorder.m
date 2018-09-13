@@ -63,12 +63,12 @@
     self = [super init];
     if (self) {
         
-        self.realAudioPath    = [self pcmFilePath:audioFormat];
-        self.realMP3Path      = [self mp3FilePath];
-        self.realBitRate      = (audioFormat == MDHAudioFormatMP3) ? 16 : bitRate;
-        self.realChannels     = channnels;
-        self.realSampleRate   = sampleRate;
-        self.realFormat       = audioFormat;
+        _realAudioPath    = [self pcmFilePath:audioFormat];
+        _realMP3Path      = [self mp3FilePath];
+        _realBitRate      = (audioFormat == MDHAudioFormatMP3) ? 16 : bitRate;
+        _realChannels     = channnels;
+        _realSampleRate   = sampleRate;
+        _realFormat       = audioFormat;
         
         NSArray *bitRateArray     = @[@(8),@(16),@(24),@(32)];
         NSArray *sampleRateArray  = @[@(8000),@(16000),@(44100)];
