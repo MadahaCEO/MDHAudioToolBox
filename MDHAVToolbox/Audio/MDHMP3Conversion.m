@@ -7,6 +7,7 @@
 //
 
 #import "MDHMP3Conversion.h"
+#import "MDHAudioConfiguration.h"
 #import "lame.h"
 
 
@@ -22,15 +23,16 @@
 
 }
 
+@property(nonatomic, strong) MDHAudioConfiguration *audioConfiguration;
 
+// 是否跳过噪音
 @property(nonatomic, assign) BOOL isSkipPCMHeader;
-@property(nonatomic, assign) BOOL skipDoWhile;
-@property(nonatomic, assign) BOOL stopConvert;
+// 是否需要关闭文件
 @property(nonatomic, assign) BOOL needClosed;
+// 是否继续转码（while循环中）
+@property(nonatomic, assign) BOOL keepConverting;
+// 取消操作
 @property(nonatomic, assign) BOOL cancelAction;
-@property(nonatomic, assign) BOOL convertError;
-@property(nonatomic, assign) int  realChannels;
-
 
 @end
 
@@ -39,21 +41,16 @@
 
 
 - (void)dealloc {
-    NSLog(@"----------");
+    NSLog(@"MDHMP3Conversion---------- dealloc");
 }
 
-- (instancetype)initWithPath:(NSString *)fromPath
-                      toPath:(NSString *)toPath
-                     bitRate:(int)bitRate
-                   channnels:(int)channnels
-                  sampleRate:(int)sampleRate
-                convertError:(NSError **)convertError {
+
+- (instancetype)initWithConfiguration:(MDHAudioConfiguration *)configuration error:(NSError **)error {
 
     self = [super init];
     if (self) {
         
-        self.skipDoWhile = NO;
-        self.realChannels  = channnels;
+        _audioConfiguration = configuration;
         
         /*
          文件顺利打开后，指向该流的文件指针就会被返回。如果文件打开失败则返回 NULL，并把错误代码存在 error 中。
@@ -62,18 +59,18 @@
          rb:  以只读方式打开一个二进制文件文件，该文件必须存在。
          wb+: 以读/写方式打开或建立一个二进制文件，允许读和写。
          */
-        pcm = fopen([fromPath  cStringUsingEncoding:NSASCIIStringEncoding], "rb");
-        mp3 = fopen([toPath    cStringUsingEncoding:NSASCIIStringEncoding], "wb+");
+        pcm = fopen([_audioConfiguration.cafFilePath  cStringUsingEncoding:NSASCIIStringEncoding], "rb");
+        mp3 = fopen([_audioConfiguration.mp3FilePath  cStringUsingEncoding:NSASCIIStringEncoding], "wb+");
         
         /*
          转码参数：采样率、通道、码率
          */
         lame = lame_init();
-        lame_set_in_samplerate(lame, sampleRate); // 采样率
-        lame_set_num_channels(lame, channnels); // 通道
-        lame_set_VBR(lame, vbr_default); // 动态码率
-        lame_set_brate(lame, bitRate); // 比特率
-        lame_set_quality(lame,2);
+        lame_set_in_samplerate(lame, _audioConfiguration.sampleRate);
+        lame_set_num_channels(lame, _audioConfiguration.channel);
+        lame_set_VBR(lame, vbr_default);
+        lame_set_brate(lame, _audioConfiguration.bitRate);
+        lame_set_quality(lame,_audioConfiguration.quality);
 
        
         /*
@@ -127,8 +124,10 @@
         
         
         int result = lame_init_params(lame);
-        if (result == -1 && convertError != NULL) { 
-            *convertError = [NSError errorWithDomain:@"com.lame.error" code:0 userInfo:@{NSLocalizedDescriptionKey:@"lame init error"}];
+        if (result == -1 && error != NULL) {
+            *error = [NSError errorWithDomain:@"com.lame.error"
+                                         code:0
+                                     userInfo:@{NSLocalizedDescriptionKey:@"lame 初始化失败"}];
             return nil;
         }
     }
@@ -142,11 +141,9 @@
         
         @try {
             
-            self.convertError = NO;
-
             const int PCM_SIZE = 8192; // 相当于8192箱啤酒，一箱16瓶（啤酒=字节，8192个16字节的数据长度）
             const int MP3_SIZE = 8192;
-            short int pcm_buffer[PCM_SIZE * self.realChannels]; // 填充 PCM_SIZE * self.realChannels 个pcm格式数据元素的数组
+            short int pcm_buffer[PCM_SIZE * _audioConfiguration.channel]; // 填充 PCM_SIZE * self.realChannels 个pcm格式数据元素的数组
             unsigned char mp3_buffer[MP3_SIZE]; // 填充 MP3_SIZE 个mp3格式数据元素的数组
             
             do {
@@ -180,11 +177,10 @@
                                   ===》转码的时候参数说明 number of samples per channel （每个通道的样本，so，2通道个需要乘以2）
                  sizeof(short int)===》计算 short int 占用的字节数
                  */
-                if (length > PCM_SIZE * self.realChannels * sizeof(short int)) {
+                if (length > PCM_SIZE * _audioConfiguration.channel * sizeof(short int)) {
                     
                     if (!self.isSkipPCMHeader) {
-                        //Uump audio file header, If you do not skip file header
-                        //you will heard some noise at the beginning!!!
+                        // 跳过噪音
                         fseek(pcm, 4 * 1024, SEEK_CUR);
                         self.isSkipPCMHeader = YES;
                     }
@@ -200,9 +196,11 @@
                      
                      pcm 文件指针会偏移
                      */
-                    read = (int)fread(pcm_buffer, self.realChannels * sizeof(short int), PCM_SIZE, pcm);
+                    read = (int)fread(pcm_buffer, _audioConfiguration.channel * sizeof(short int), PCM_SIZE, pcm);
                    
-                    if (self.realChannels == 1) {
+                    NSLog(@"pcf_buffer---------- %d",read);
+
+                    if (_audioConfiguration.channel == 1) {
                         /*
                          lame_encode_buffer -> 将输入的PCM数据编码成MP3数据。
                          第一个参数: lame 对象
@@ -227,13 +225,14 @@
                     }
                     
                     if (write < 0) {
-                        // 直接跳出循环
-                        self.stopConvert = YES;
-                        self.convertError = YES;
+                        // 直接跳出循环（转码异常,等同于取消操作。）
+                        self.cancelAction    = YES;
+                        self.keepConverting  = NO;
                     }
                     
+                    NSLog(@"mp3_buffer---------- %d",write);
+
                     /*
-                    
                      fwrite -> 文件指针根据读取长度向后偏移
                      第一个参数:是一个指针，对fwrite来说，是要获取数据的地址；
                      第二个参数:要写入内容的单字节数；
@@ -245,19 +244,19 @@
                     fwrite(mp3_buffer, write, 1, mp3);
                 } else {
                     
-                    self.stopConvert = self.skipDoWhile;
-                    
                     [NSThread sleepForTimeInterval:0.1];
                 }
-            } while (! self.stopConvert);
+            } while (self.keepConverting);
             
-            read = (int)fread(pcm_buffer, self.realChannels * sizeof(short int), PCM_SIZE, pcm);
+            read = (int)fread(pcm_buffer, _audioConfiguration.channel * sizeof(short int), PCM_SIZE, pcm);
            
             /*
              lame_encode_flush -> 将mp3buffer中的MP3数据输出
              */
             write = lame_encode_flush(lame, mp3_buffer, MP3_SIZE);
             
+            NSLog(@"flush_mp3_buffer---------- %d",write);
+
             if (self.needClosed) {
                 [self lameClosed];
             }
@@ -273,60 +272,50 @@
     
     self.completeBlock = cBlock;
     
-    self.cancelAction    = NO;
-    self.skipDoWhile    = NO;
-    self.needClosed  = NO;
-    self.stopConvert = NO;
-    self.isSkipPCMHeader = NO;
-
-    [self convert];
-}
-
-- (void)reStart {
-    
-    self.cancelAction    = NO;
-    self.skipDoWhile     = NO;
-    self.needClosed      = NO;
-    self.stopConvert     = NO;
+    self.keepConverting  = YES;
     self.isSkipPCMHeader = NO;
 
     [self convert];
 }
 
 - (void)pause {
-    self.skipDoWhile = YES;
+    
     self.needClosed  = NO;
-    self.cancelAction    = NO;
+    self.keepConverting = NO;
+}
 
+- (void)reStart {
+    
+    self.keepConverting  = YES;
+    self.isSkipPCMHeader = NO;
+    
+    [self convert];
 }
 
 - (void)stop {
+    
     // 暂停，直接停止
-    if (self.stopConvert) {
-        if (self.completeBlock) {
-            self.completeBlock(NO, nil);
-        }
+    if (!self.keepConverting) {
+        [self lameClosed];
         return;
     }
     
-    self.cancelAction    = NO;
-    self.skipDoWhile   = YES;
-    self.needClosed = YES;
+    self.keepConverting = NO;
+    self.needClosed     = YES;
 }
 
 - (void)cancel {
     
+    self.cancelAction  = YES;
+
     // 暂停，直接取消
-    if (self.stopConvert) {
-        if (self.completeBlock) {
-            self.completeBlock(YES, nil);
-        }
+    if (!self.keepConverting) {
+        [self lameClosed];
         return;
     }
     
-    self.cancelAction  = YES;
-    self.skipDoWhile = YES;
-    self.needClosed  = YES;
+    self.keepConverting = NO;
+    self.needClosed     = YES;
 }
 
 - (void)lameClosed {
@@ -338,14 +327,7 @@
     fclose(pcm);
    
     if (self.completeBlock) {
-        
-        NSError *error = nil;
-        if (self.convertError) {
-            error = [NSError errorWithDomain:@"com.lame.error"
-                                                 code:0
-                                             userInfo:@{NSLocalizedDescriptionKey:@"lame error"}];
-        }
-        self.completeBlock(self.cancelAction, error);
+        self.completeBlock(self.cancelAction);
     }
 }
 

@@ -13,30 +13,21 @@
  
  @param deleteFile   正常结束&取消操作
  */
-typedef void(^MDHMP3CompleteBlock)(BOOL deleteFile, NSError *error);
+typedef void(^MDHMP3CompleteBlock)(BOOL deleteFile);
 
+@class MDHAudioConfiguration;
 @interface MDHMP3Conversion : NSObject
 
 @property(nonatomic, copy) MDHMP3CompleteBlock completeBlock;
 
 
 /**
- @abstract   初始化（MP3文件路径与传入的原始音频文件路径一致）
+ @abstract   初始化
  
- @param fromPath    原始音频文件路径（例如: document/xxxx.caf）
- @param toPath      mp3文件路径    （例如: document/yyyy.mp3）
- @param bitRate     比特率（16）
- @param channnels   通道（1、2）
- @param sampleRate  采样率（8000、16000、44100）
+ @param configuration   配置
+ @param error           参数错误
  */
-
-- (instancetype)initWithPath:(NSString *)fromPath
-                      toPath:(NSString *)toPath
-                     bitRate:(int)bitRate
-                   channnels:(int)channnels
-                  sampleRate:(int)sampleRate
-                convertError:(NSError **)convertError;
-
+- (instancetype)initWithConfiguration:(MDHAudioConfiguration *)configuration error:(NSError **)error;
 
 /**
  @abstract   开始转码

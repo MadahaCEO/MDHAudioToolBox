@@ -11,22 +11,14 @@
 
 @interface MDHAudioRecorder ()<AVAudioRecorderDelegate>
 
-@property (nonatomic, copy)   NSString *realAudioPath;
-@property (nonatomic, copy)   NSString *realMP3Path;
-@property (nonatomic, assign) int realBitRate;
-@property (nonatomic, assign) int realChannels;
-@property (nonatomic, assign) int realSampleRate;
-@property (nonatomic, assign) MDHAudioFormat realFormat;
-
+@property(nonatomic, strong) MDHAudioConfiguration *audioConfiguration;
 @property (nonatomic, strong) AVAudioRecorder  *recorder;
 @property (nonatomic, strong) MDHMP3Conversion *mp3Convert;
-
-
-@property (nonatomic, assign) BOOL alreadyPause;
+@property (nonatomic, assign, getter=isPausedByUser) BOOL pausedByUser;
+@property (nonatomic, assign, getter=isNeedResumeOtherAudio) BOOL needResumeOtherAudio;
 
 
 @end
-
 
 
 @implementation MDHAudioRecorder
@@ -49,47 +41,84 @@
 
 - (void)dealloc {
     
-    NSLog(@"----------");
+    NSLog(@"MDHAudioRecorder----------dealloc");
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 
-- (instancetype)initWithBitRate:(int)bitRate
-                      channnels:(int)channnels
-                     sampleRate:(int)sampleRate
-                    audioFormat:(MDHAudioFormat)audioFormat
-                  recorderError:(NSError **)error {
-    
+- (instancetype)initWithConfiguration:(MDHAudioConfiguration *)configuration error:(NSError **)error {
+
     self = [super init];
     if (self) {
         
-        _realAudioPath    = [self pcmFilePath:audioFormat];
-        _realMP3Path      = [self mp3FilePath];
-        _realBitRate      = (audioFormat == MDHAudioFormatMP3) ? 16 : bitRate;
-        _realChannels     = channnels;
-        _realSampleRate   = sampleRate;
-        _realFormat       = audioFormat;
+        _audioConfiguration = configuration;
         
-        NSArray *bitRateArray     = @[@(8),@(16),@(24),@(32)];
-        NSArray *sampleRateArray  = @[@(8000),@(16000),@(44100)];
-        NSArray *channnelsArray   = @[@(1),@(2)];
-        NSArray *audioFormatArray = @[@(MDHAudioFormatCAF),@(MDHAudioFormatWAV),@(MDHAudioFormatMP3)];
+        /**
+         判断配置文件
+         */
+        if (error != NULL && !configuration) {
+            *error = [NSError errorWithDomain:@"com.recorder.error"
+                                         code:0
+                                     userInfo:@{NSLocalizedDescriptionKey:@"音频配置文件不能为空"}];
+            return nil;
+        }
         
-        if (![bitRateArray containsObject:@(bitRate)] ||
-            ![sampleRateArray containsObject:@(sampleRate)] ||
-            ![channnelsArray containsObject:@(channnels)] ||
-            ![audioFormatArray containsObject:@(audioFormat)]) {
+        
+        /**
+         切换回话类型
+         */
+        if (error != NULL &&![self switchCategory]) {
+            *error = [NSError errorWithDomain:@"com.recorder.error"
+                                         code:0
+                                     userInfo:@{NSLocalizedDescriptionKey:@"session类型切换失败"}];
+            return nil;
+        }
+        
+        
+        /**
+         初始化录音器
+         */
+        NSDictionary *dic = @{
+                              AVSampleRateKey        : @(_audioConfiguration.sampleRate),
+                              AVFormatIDKey          : @(kAudioFormatLinearPCM),
+                              AVLinearPCMBitDepthKey : @(_audioConfiguration.bitRate),
+                              AVNumberOfChannelsKey  : @(_audioConfiguration.channel)
+                              };
+        
+        NSURL *url = [NSURL URLWithString:_audioConfiguration.cafFilePath];
+        
+        NSError *recorderError = nil;
+        _recorder = [[AVAudioRecorder alloc] initWithURL:url settings:dic error:&recorderError];
+        if (error != NULL && recorderError) {
+            *error = [NSError errorWithDomain:@"com.recorder.error"
+                                         code:0
+                                     userInfo:@{NSLocalizedDescriptionKey:@"AVAudioRecorder 初始化失败"}];
+            return nil;
+        }
+        
+        _recorder.delegate = self;
+        [_recorder prepareToRecord];
+
+        
+        /**
+         初始化MP3转换
+         */
+        if (configuration.format == MDHAudioFormat_MP3) {
+        
+            NSError *mp3Error = nil;
+            _mp3Convert = [[MDHMP3Conversion alloc] initWithConfiguration:configuration error:&mp3Error];
             
-            if (error != NULL) {//判断调用方是否需要获取错误信息
+            if (mp3Error && error != NULL) {
                 *error = [NSError errorWithDomain:@"com.recorder.error"
                                              code:0
-                                         userInfo:@{NSLocalizedDescriptionKey:@"参数异常"}];
+                                         userInfo:@{NSLocalizedDescriptionKey:@"lame 初始化失败"}];
+                
                 return nil;
             }
         }
-        
-        [self addNotification];
-        
+
+        [self addInterruptionNotification];
+       
     }
     return self;
 }
@@ -97,101 +126,68 @@
 
 - (BOOL)switchCategory {
     
-    BOOL valid = YES;
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    
+    /**
+     这里 AVAudioSessionCategoryOptionDuckOthers , 所以录音完毕继续其他app播放音乐。（其他类型酌情而定）
+     */
+    self.needResumeOtherAudio = session.isOtherAudioPlaying;
+   
     
     NSError *error = nil;
-    [[AVAudioSession sharedInstance] setCategory: AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionMixWithOthers error:&error];
-    if (error && self.completeBlock) {
-        self.completeBlock(nil, nil, nil, error);
-        valid = NO;
+    /*
+     AVAudioSessionCategoryPlayAndRecord: 录音同时《支持》其他音乐播放
+     AVAudioSessionCategoryRecord       : 录音同时《停止》其他音乐播放
+     
+     AVAudioSessionCategoryOptionMixWithOthers:   录音同时《不处理》其他音乐声音
+     AVAudioSessionCategoryOptionDuckOthers:      录音同时《压低》  其他音乐声音
+     */
+    [session setCategory: AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDuckOthers error:&error];
+    if (error) {
+        [session setActive:YES error:&error];
     }
     
-    return valid;
+    return error ? NO : YES;
 }
 
 - (void)start:(MDHAudioRecorderCompleteBlock)block {
     
     self.completeBlock = block;
     
-    if (![self switchCategory]) {
-        return;
-    }
-    
-    NSDictionary *dic = @{
-                          AVSampleRateKey        : @(self.realSampleRate),
-                          AVFormatIDKey          : @(kAudioFormatLinearPCM),
-                          AVLinearPCMBitDepthKey : @(self.realBitRate),
-                          AVNumberOfChannelsKey  : @(self.realChannels)
-                          };
-    
-    NSURL *url = [NSURL URLWithString:self.realAudioPath];
-    
-    NSError *error = nil;
-    self.recorder = [[AVAudioRecorder alloc] initWithURL:url settings:dic error:nil];
-    if (error && self.completeBlock) {
-        self.completeBlock(nil, nil, nil, error);
-        return;
-    }
-    
-    self.recorder.delegate = self;
-    
-    [self.recorder prepareToRecord];
+    self.pausedByUser = NO;
+
     [self.recorder record];
-    
-    if (self.realFormat == MDHAudioFormatMP3) {
+
+    if (_audioConfiguration.format == MDHAudioFormat_MP3) {
         [self convertToMP3];
     }
 }
 
 - (void)convertToMP3 {
     
-    self.alreadyPause = NO;
-    
-    NSError *error = nil;
-    self.mp3Convert = [[MDHMP3Conversion alloc] initWithPath:self.realAudioPath
-                                                      toPath:self.realMP3Path
-                                                     bitRate:self.realBitRate
-                                                   channnels:self.realChannels
-                                                  sampleRate:self.realSampleRate
-                                                convertError:&error];
-    if (error) {
-        if (self.completeBlock) {
-            self.completeBlock(nil, nil, nil, error);
-        }
-        return;
-    }
-    
-    
-    __weak   typeof(self) weakSelf   = self;
-    [self.mp3Convert start:^(BOOL deleteFile, NSError *error) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-       
-        if (error) {
-            if (strongSelf.completeBlock) {
-                self.completeBlock(nil, nil, nil, error);
-            }
+    __weak typeof(self)weakSelf = self;
+    [self.mp3Convert start:^(BOOL deleteFile) {
+        __weak typeof(weakSelf)strongSelf = weakSelf;
+        
+        [[NSFileManager defaultManager] removeItemAtPath:_audioConfiguration.cafFilePath error:nil];
+
+        if (deleteFile) {
+            // 取消操作无需回调，直接删除文件。
+            [[NSFileManager defaultManager] removeItemAtPath:_audioConfiguration.mp3FilePath error:nil];
+            
         } else {
             
-            if (deleteFile) {
-                // 取消操作无需回调，直接删除文件。
-                [[NSFileManager defaultManager] removeItemAtPath:strongSelf.realMP3Path error:nil];
-                [[NSFileManager defaultManager] removeItemAtPath:strongSelf.realAudioPath error:nil];
-                
-            } else {
-                
-                NSString *tempPath = strongSelf.realMP3Path?:@"";
-                NSString *lastPath = [tempPath stringByReplacingOccurrencesOfString:NSHomeDirectory() withString:@""];
-                
-                AVURLAsset* audioAsset =[AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:tempPath] options:nil];
-                CMTime time = audioAsset.duration;
-                NSString *duration = [NSString stringWithFormat:@"%.0f",CMTimeGetSeconds(time) * 1000];
-                
-                long long size = [[NSFileManager defaultManager] attributesOfItemAtPath:tempPath error:nil].fileSize/1024;
-                NSString *fileSize = [NSString stringWithFormat:@"%lld kb",size];
-                
-                if (self.completeBlock) {
-                    self.completeBlock(lastPath, duration, fileSize, nil);
-                }
+            NSString *tempPath = _audioConfiguration.mp3FilePath?:@"";
+            
+            AVURLAsset* audioAsset =[AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:tempPath] options:nil];
+            CMTime time = audioAsset.duration;
+            NSString *duration = [NSString stringWithFormat:@"%.0f ms",CMTimeGetSeconds(time) * 1000];
+            
+            long long size = [[NSFileManager defaultManager] attributesOfItemAtPath:tempPath error:nil].fileSize/1024;
+            NSString *fileSize = [NSString stringWithFormat:@"%lld kb",size];
+            
+            if (strongSelf.completeBlock) {
+                strongSelf.completeBlock(tempPath, duration, fileSize, nil);
             }
         }
     }];
@@ -199,12 +195,23 @@
 
 - (void)reStart {
     
-    self.alreadyPause = NO;
+    if (![self switchCategory] && self.completeBlock) {
+        NSError *error = [NSError errorWithDomain:@"com.recorder.error"
+                                             code:0
+                                         userInfo:@{NSLocalizedDescriptionKey:@"session类型切换失败"}];
+        self.completeBlock(nil, nil, nil, error);
+        
+        return;
+    }
+    
     
     if (!self.recorder.isRecording) {
+        
+        self.pausedByUser = NO;
+
         [self.recorder record];
         
-        if (self.realFormat == MDHAudioFormatMP3) {
+        if (_audioConfiguration.format == MDHAudioFormat_MP3) {
             [self.mp3Convert reStart];
         }
     }
@@ -212,81 +219,56 @@
 
 - (void)pause {
     
-    self.alreadyPause = YES;
-    
+    self.pausedByUser = YES;
+
     [self.recorder pause];
     
-    if (self.realFormat == MDHAudioFormatMP3) {
+    if (_audioConfiguration.format == MDHAudioFormat_MP3) {
         [self.mp3Convert pause];
     }
 }
 
 - (void)stop {
     
-    self.alreadyPause = YES;
-    
     [self.recorder stop];
     
-    if (self.realFormat == MDHAudioFormatMP3) {
+    if (_audioConfiguration.format == MDHAudioFormat_MP3) {
         [self.mp3Convert stop];
     }
 }
 
 - (void)cancel {
     
-    self.alreadyPause = YES;
-    
     [self.recorder stop];
-    
-    if (self.realFormat == MDHAudioFormatMP3) {
+
+    if (_audioConfiguration.format == MDHAudioFormat_MP3) {
         [self.mp3Convert cancel];
     }
 }
 
 
-#pragma mark - File action
-
-- (NSString *)pcmFilePath:(MDHAudioFormat)format {
-    
-    NSString *time = [NSString stringWithFormat:@"%ld", (long)[[NSDate date] timeIntervalSince1970]];
-    NSString *name = [NSString stringWithFormat:@"%@.%@",time,(format == MDHAudioFormatWAV) ? @"wav" : @"caf"];
-    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
-    
-    NSLog(@"%@----------",path);
-    
-    return path;
-}
-
-- (NSString *)mp3FilePath {
-    
-    NSString *name = self.realAudioPath.lastPathComponent.stringByDeletingPathExtension;
-    NSString *mp3  = [NSString stringWithFormat:@"%@.mp3",name];
-    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:mp3];
-    return path;
-}
-
 
 #pragma mark - Notification
 
-- (void)addNotification {
+- (void)addInterruptionNotification {
     
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(audioSessionWasInterrupted:)
                                                  name:AVAudioSessionInterruptionNotification
                                                object:[AVAudioSession sharedInstance]];
-    
+
 }
 
 - (void)audioSessionWasInterrupted:(NSNotification *)notification {
-    
+
     if (AVAudioSessionInterruptionTypeBegan == [notification.userInfo[AVAudioSessionInterruptionTypeKey] intValue]) {
         NSLog(@"begin");
         
-        if (!self.alreadyPause) { // 正在录音
+        if (!self.isPausedByUser) { // 是否已经被用户暂停了
             
             [self.recorder pause];
             
-            if (self.realFormat == MDHAudioFormatMP3) {
+            if (_audioConfiguration.format == MDHAudioFormat_MP3) {
                 [self.mp3Convert pause];
             }
         }
@@ -297,7 +279,7 @@
          如果之前处于录音状态，就可以继续录音
          如果之前已经暂停了，就不需要再录音
          */
-        if (!self.alreadyPause) {
+        if (!self.isPausedByUser) {
             [self reStart];
         }
     }
@@ -307,26 +289,30 @@
 #pragma mark - AVAudioRecorderDelegate
 - (void)audioRecorderDidFinishRecording:(AVAudioRecorder *)recorder successfully:(BOOL)flag {
     
-    if (self.realFormat == MDHAudioFormatMP3) {
+    if (_audioConfiguration.format == MDHAudioFormat_MP3) {
         return;
     }
     
-    NSString *tempPath = self.realAudioPath?:@"";
-    NSString *lastPath = [tempPath stringByReplacingOccurrencesOfString:NSHomeDirectory() withString:@""];
+    NSString *tempPath = _audioConfiguration.cafFilePath?:@"";
+    
+    if ([[NSFileManager defaultManager] fileExistsAtPath:tempPath]) {
+        NSLog(@"111111");
+    } else {
+        NSLog(@"22222");
+
+    }
     
     AVURLAsset* audioAsset =[AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:tempPath] options:nil];
     CMTime time = audioAsset.duration;
-    NSString *duration = [NSString stringWithFormat:@"%.0f",CMTimeGetSeconds(time) * 1000];
+    NSString *duration = [NSString stringWithFormat:@"%.0f ms",CMTimeGetSeconds(time) * 1000];
     
     long long size = [[NSFileManager defaultManager] attributesOfItemAtPath:tempPath error:nil].fileSize/1024;
     NSString *fileSize = [NSString stringWithFormat:@"%lld kb",size];
     
     if (self.completeBlock) {
-        self.completeBlock(lastPath, duration, fileSize, nil);
+        self.completeBlock(tempPath, duration, fileSize, nil);
     }
 }
 
 
 @end
-
-

@@ -24,5 +24,6 @@ FOUNDATION_EXPORT const unsigned char MDHAVToolboxVersionString[];
  解决方法：在Build Settings -> other lingker Flags 中添加-w 就可以解决了
  */
 
+#import <MDHAVToolbox/MDHAudioConfiguration.h>
 #import <MDHAVToolbox/MDHAudioRecorder.h>
 
