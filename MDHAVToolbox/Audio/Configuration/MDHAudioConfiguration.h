@@ -81,14 +81,21 @@ typedef NS_ENUM(NSInteger, MDHAudioFormat) {
 
 @interface MDHAudioConfiguration : NSObject
 
+// 采样精度，采样位数
 @property (nonatomic, assign) MDHAudioBitRate bitRate;
+// 采样率
 @property (nonatomic, assign) MDHAudioSampleRate sampleRate;
+// 通道数
 @property (nonatomic, assign) MDHAudioChannel channel;
+// 音频质量
 @property (nonatomic, assign) MDHAudioQuality quality;
+// 音频格式
 @property (nonatomic, assign) MDHAudioFormat  format;
-
+// 存放所有录音文件的文件夹路径
 @property (nonatomic, copy, readonly) NSString *audioDirectoryPath;
+// caf文件路径
 @property (nonatomic, copy, readonly) NSString *cafFilePath;
+// mp3文件路径
 @property (nonatomic, copy, readonly) NSString *mp3FilePath;
 
 

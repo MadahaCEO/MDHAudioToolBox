@@ -32,6 +32,8 @@
 		184C939521280A4D0076E6A1 /* MDHAudioRecorder.h in Headers */ = {isa = PBXBuildFile; fileRef = 184C938F21280A4D0076E6A1 /* MDHAudioRecorder.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		18BDA63D214B583F000C5915 /* MDHAudioConfiguration.h in Headers */ = {isa = PBXBuildFile; fileRef = 18BDA63B214B583F000C5915 /* MDHAudioConfiguration.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		18BDA63E214B583F000C5915 /* MDHAudioConfiguration.m in Sources */ = {isa = PBXBuildFile; fileRef = 18BDA63C214B583F000C5915 /* MDHAudioConfiguration.m */; };
+		18BDA643214B9CC5000C5915 /* MDHAudioQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 18BDA641214B9CC5000C5915 /* MDHAudioQueue.h */; };
+		18BDA644214B9CC5000C5915 /* MDHAudioQueue.m in Sources */ = {isa = PBXBuildFile; fileRef = 18BDA642214B9CC5000C5915 /* MDHAudioQueue.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +61,8 @@
 		184C938F21280A4D0076E6A1 /* MDHAudioRecorder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MDHAudioRecorder.h; sourceTree = "<group>"; };
 		18BDA63B214B583F000C5915 /* MDHAudioConfiguration.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MDHAudioConfiguration.h; sourceTree = "<group>"; };
 		18BDA63C214B583F000C5915 /* MDHAudioConfiguration.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MDHAudioConfiguration.m; sourceTree = "<group>"; };
+		18BDA641214B9CC5000C5915 /* MDHAudioQueue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MDHAudioQueue.h; sourceTree = "<group>"; };
+		18BDA642214B9CC5000C5915 /* MDHAudioQueue.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MDHAudioQueue.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -131,11 +135,9 @@
 		184C93842128066A0076E6A1 /* Audio */ = {
 			isa = PBXGroup;
 			children = (
+				18BDA640214B9C2A000C5915 /* Case2 */,
+				18BDA63F214B9C22000C5915 /* Case1 */,
 				184C938921280A4C0076E6A1 /* libmp3lame */,
-				184C938F21280A4D0076E6A1 /* MDHAudioRecorder.h */,
-				184C938E21280A4C0076E6A1 /* MDHAudioRecorder.m */,
-				184C938C21280A4C0076E6A1 /* MDHMP3Conversion.h */,
-				184C938D21280A4C0076E6A1 /* MDHMP3Conversion.m */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -166,6 +168,26 @@
 			path = Audio/Configuration;
 			sourceTree = "<group>";
 		};
+		18BDA63F214B9C22000C5915 /* Case1 */ = {
+			isa = PBXGroup;
+			children = (
+				184C938F21280A4D0076E6A1 /* MDHAudioRecorder.h */,
+				184C938E21280A4C0076E6A1 /* MDHAudioRecorder.m */,
+				184C938C21280A4C0076E6A1 /* MDHMP3Conversion.h */,
+				184C938D21280A4C0076E6A1 /* MDHMP3Conversion.m */,
+			);
+			path = Case1;
+			sourceTree = "<group>";
+		};
+		18BDA640214B9C2A000C5915 /* Case2 */ = {
+			isa = PBXGroup;
+			children = (
+				18BDA641214B9CC5000C5915 /* MDHAudioQueue.h */,
+				18BDA642214B9CC5000C5915 /* MDHAudioQueue.m */,
+			);
+			path = Case2;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -174,6 +196,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				184C937A212805240076E6A1 /* MDHAVToolbox.h in Headers */,
+				18BDA643214B9CC5000C5915 /* MDHAudioQueue.h in Headers */,
 				184C939521280A4D0076E6A1 /* MDHAudioRecorder.h in Headers */,
 				18BDA63D214B583F000C5915 /* MDHAudioConfiguration.h in Headers */,
 				184C939021280A4D0076E6A1 /* lame.h in Headers */,
@@ -316,6 +339,7 @@
 			files = (
 				184C939421280A4D0076E6A1 /* MDHAudioRecorder.m in Sources */,
 				18BDA63E214B583F000C5915 /* MDHAudioConfiguration.m in Sources */,
+				18BDA644214B9CC5000C5915 /* MDHAudioQueue.m in Sources */,
 				184C939321280A4D0076E6A1 /* MDHMP3Conversion.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

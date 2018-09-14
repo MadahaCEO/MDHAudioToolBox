@@ -289,18 +289,15 @@
 #pragma mark - AVAudioRecorderDelegate
 - (void)audioRecorderDidFinishRecording:(AVAudioRecorder *)recorder successfully:(BOOL)flag {
     
+    if (self.isNeedResumeOtherAudio) {
+        [[AVAudioSession sharedInstance] setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+    }
+    
     if (_audioConfiguration.format == MDHAudioFormat_MP3) {
         return;
     }
     
     NSString *tempPath = _audioConfiguration.cafFilePath?:@"";
-    
-    if ([[NSFileManager defaultManager] fileExistsAtPath:tempPath]) {
-        NSLog(@"111111");
-    } else {
-        NSLog(@"22222");
-
-    }
     
     AVURLAsset* audioAsset =[AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:tempPath] options:nil];
     CMTime time = audioAsset.duration;
